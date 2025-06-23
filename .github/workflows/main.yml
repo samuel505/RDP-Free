@@ -1,12 +1,6 @@
 name: RDP Access with Bore
 
-on:
-  workflow_dispatch:
-    inputs:
-      session_id:
-        description: 'Identificador único de sesión'
-        required: true
-        type: string
+on: [workflow_dispatch]
 
 jobs:
   build:
@@ -19,13 +13,13 @@ jobs:
         run: Expand-Archive bore.zip -DestinationPath .
 
       - name: Enable Terminal Services
-        run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+        run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
 
       - name: Enable Remote Desktop Firewall Rule
         run: Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
 
       - name: Set User Authentication for RDP
-        run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+        run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
 
       - name: Generate random password and set for runneradmin
         shell: pwsh
@@ -37,21 +31,18 @@ jobs:
           $securePass = ConvertTo-SecureString -String $password -AsPlainText -Force
           Set-LocalUser -Name "runneradmin" -Password $securePass
 
-          # Exportar la contraseña para usarla en el siguiente paso (no se imprime)
+          # Exportar la contraseña para usarla en el siguiente paso
           Write-Output "::set-output name=password::$password"
 
       - name: Start bore and send data to webhook
         shell: pwsh
         env:
-          SESSION_ID  : ${{ github.event.inputs.session_id }}
           RDP_PASS    : ${{ steps.generate_pass.outputs.password }}
           WEBHOOK_URL : ${{ secrets.WEBHOOK_URL }}
           RUN_ID      : ${{ github.run_id }}
         run: |
-          $process = Start-Process -FilePath ".\bore.exe" `
-                      -ArgumentList "local", "3389", "--to", "bore.pub" `
-                      -NoNewWindow -PassThru `
-                      -RedirectStandardOutput "bore_output.txt"
+          $process = Start-Process -FilePath ".\bore.exe" -ArgumentList "local", "3389", "--to", "bore.pub" `
+                      -NoNewWindow -PassThru -RedirectStandardOutput "bore_output.txt"
           
           $found = $false
           while (-not $found) {
@@ -64,11 +55,10 @@ jobs:
                           $found = $true
                           
                           $body = @{
-                            "session_id" = $env:SESSION_ID
-                            "run_id"     = $env:RUN_ID
-                            "port"       = $port
-                            "url"        = "bore.pub:$port"
-                            "password"   = $env:RDP_PASS
+                            "run_id"   = $env:RUN_ID
+                            "port"     = $port
+                            "url"      = "bore.pub:$port"
+                            "password" = $env:RDP_PASS
                           } | ConvertTo-Json
                           
                           Invoke-RestMethod -Uri $env:WEBHOOK_URL `
