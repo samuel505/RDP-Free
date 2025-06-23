@@ -25,22 +25,24 @@ jobs:
         shell: pwsh
         id: generate_pass
         run: |
-          $length = 12
-          $chars  = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_-+='
+          $length   = 12
+          $chars    = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_-+='
           $password = -join ((1..$length) | ForEach-Object { $chars[(Get-Random -Maximum $chars.Length)] })
           $securePass = ConvertTo-SecureString -String $password -AsPlainText -Force
           Set-LocalUser -Name "runneradmin" -Password $securePass
 
-          # Exportar la contraseña para usarla en el siguiente paso (no se imprime)
+          # Exportar la contraseña para usarla en el siguiente paso
           Write-Output "::set-output name=password::$password"
 
       - name: Start bore and send data to webhook
         shell: pwsh
         env:
-          RDP_PASS: ${{ steps.generate_pass.outputs.password }}
-          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          RDP_PASS    : ${{ steps.generate_pass.outputs.password }}
+          WEBHOOK_URL : ${{ secrets.WEBHOOK_URL }}
+          RUN_ID      : ${{ github.run_id }}
         run: |
-          $process = Start-Process -FilePath ".\bore.exe" -ArgumentList "local", "3389", "--to", "bore.pub" -NoNewWindow -PassThru -RedirectStandardOutput "bore_output.txt"
+          $process = Start-Process -FilePath ".\bore.exe" -ArgumentList "local", "3389", "--to", "bore.pub" `
+                      -NoNewWindow -PassThru -RedirectStandardOutput "bore_output.txt"
           
           $found = $false
           while (-not $found) {
@@ -53,6 +55,7 @@ jobs:
                           $found = $true
                           
                           $body = @{
+                            "run_id"   = $env:RUN_ID
                             "port"     = $port
                             "url"      = "bore.pub:$port"
                             "password" = $env:RDP_PASS
